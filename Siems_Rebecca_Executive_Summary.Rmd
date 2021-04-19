@@ -1,0 +1,109 @@
+---
+title: "Executive Summary"
+author: "Rebecca Siems"
+date: "12/8/2020"
+output: 
+  html_document:
+    code_folding: hide
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(lubridate)
+```
+
+
+I performed a sentiment analysis of tweets written about Donald Trump and Joe Biden from October 15, 2020 to November 8, 2020 in order to predict how rhetoric Twitter users use when discussing candidates might impact affective polarization, which is a type of political polarization that focuses on an in-group rallying together with a common identity and dislike of an out-group. Social media posts may increase affective polarization when users share networks with others with homogeneous political beliefs and witness incivility in comment sections, heightening anger with others holding the opposite beliefs. Through this project, I sought to understand the tone of tweets about Trump and Biden as well as the outreach the tweets had in order to predict potential effects of political messaging on Twitter on affective polarization among the American public. 
+
+Using the Bing and Afinn sentiment lexicons, I found that for both candidates, a plurality of tweets were either somewhat negative or somewhat positive, with very few extremely negative or positive tweets. Additionally, the average sentiment value of all the tweets about both Trump and Biden each day of the data’s timeframe were close to a net neutral, but increasing on Election Day. The tweets written about Trump were overall a bit more negative on average than tweets about Biden but were not overwhelmingly negative. 
+
+```{r}
+hashtag_donaldtrump <- read_csv("archive/hashtag_donaldtrump.csv")
+
+hashtag_donaldtrump <- hashtag_donaldtrump %>%
+  select(created_at, tweet, likes, retweet_count, user_name, user_screen_name, user_description, user_followers_count, city, country, state_code) %>%
+  # Remove tweets from users outside the US
+  filter(country == "United States") 
+
+trump_main <- hashtag_donaldtrump %>%
+  # Will remove soon
+  # slice_sample(n = 1000) %>%
+  mutate(
+    trump_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(trump_words)
+
+afinn_sent <- get_sentiments("afinn")
+
+trump_main <- trump_main %>% 
+  inner_join(afinn_sent, by = c("trump_words" = "word"))
+
+trump_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(date(created_at)) %>% 
+  summarise(value = mean(value)) %>%
+  ggplot(aes(x = `date(created_at)`, y = value)) +
+  geom_line() +
+  ggtitle("Average Sentiment Value of Trump Tweets Over Time") +
+  labs(x = "Date", "Sentiment Value")
+```
+
+```{r}
+hashtag_joebiden <- read_csv("archive/hashtag_joebiden.csv")
+
+hashtag_joebiden <- hashtag_joebiden %>%
+  select(created_at,tweet, likes, retweet_count, user_name, user_screen_name, user_description, user_followers_count, city, country, state_code) %>%
+  # Remove tweets from users outside the US
+  filter(country == "United States")
+
+biden_main <- hashtag_joebiden %>%
+  mutate(
+    biden_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(biden_words)
+
+afinn_sent <- get_sentiments("afinn")
+
+biden_main <- biden_main %>% 
+  inner_join(afinn_sent, by = c("biden_words" = "word")) 
+
+# Graph average sentiment value over time
+biden_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(date(created_at)) %>% 
+  summarise(value = mean(value)) %>%
+  ggplot(aes(x = `date(created_at)`, y = value)) +
+  geom_line() +
+  ggtitle("Average Sentiment Value of Biden Tweets Over Time") +
+  labs(x = "Date", "Sentiment Value")
+```
+
+I also performed a regression analysis on the average sentiment value of the tweets and the number of likes or retweets they received, and did not find a relationship between them, with the exception that more positive tweets about Joe Biden received more likes. 
+	
+```{r}
+summary(
+  biden_main %>% 
+    group_by(tweet_id) %>% 
+    mutate(value_group = mean(value)) %>% 
+    ungroup() %>% 
+    distinct(tweet_id, .keep_all = T) %>% 
+    lm(formula = likes ~ value_group + as.numeric(user_followers_count) + retweet_count))
+```
+
+I did not use feelings thermometers or any other metric to measure affective polarization, but using knowledge of literature on polarization and social media, I predict that Biden supporters may experience greater affective polarization than Trump supporters, assuming homogeneous networks, because there were both more positive tweets about Biden and negative tweets about Trump. Additionally, positive tweets about Biden received more likes, expanding their outreach. If liberal users are only exposed to like-minded content, their beliefs will be reinforced. Trump-supporting users, on the other hand, may also experience an increase in affective polarization both by viewing support for their candidate and criticism of Biden, but also through potential exposure to negative tweets about Trump, prompting anger and dislike of Democrats. 
+

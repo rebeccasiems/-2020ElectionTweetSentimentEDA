@@ -1,0 +1,617 @@
+---
+title: "Long Form EDA"
+author: "Rebecca Siems"
+date: "12/8/2020"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+# Introduction 
+
+For this project, I examine tweets about Donald Trump and Joe Biden up to three weeks before the 2020 Presidential election. Using bing and afinn sentiment analysis tools, I found assigned sentiments of words in the tweets. I explored the ways the average tweet sentiments changed up to the election, as well as their relationships to like and retweet counts. These analyses will also be used in my final Political Science Research Seminar paper, where I use the observations from this project to make predictions about the relationship between Twitter messaging and affective polarization, which is the us vs. them mentality of political polarization fueled by dislike of the other side. My goal for my analyses is to show the prevalence of negative and positive sentiments in tweets about the 2020 US presidential candidates as well as the level of engagement they receive. 
+
+Through my research in polarization literature, I've found that messaging tone in social media posts plays a major role in affective polarization, with incivility  fueling affective polarization and civility promoting cooperation. I expect that more interactions with negative sentiments may lead to an increase in affective polarization among the American public, while positive interactions may lead to a decrease. 
+
+## Load Packages
+```{r}
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(lubridate)
+```
+
+## Data Description
+[US 2020 Election Tweets] (https://www.kaggle.com/manchunhui/us-election-2020-tweets)
+
+The datasets include approximately 1.72 million tweets from October 15,2020 through November 8, 2020 that include Donald Trump's and Joe Biden's names. The tweets were collected using the Twitter API statuses_lookup and snsscrape. There are two datasets, one including tweets with Trump's name and one including tweets with Biden's name. 
+
+##### Read in Trump Dataset
+```{r}
+hashtag_donaldtrump <- read_csv("archive/hashtag_donaldtrump.csv")
+View(hashtag_donaldtrump)
+```
+
+#### Read in Biden Dataset
+```{r}
+hashtag_joebiden <- read_csv("archive/hashtag_joebiden.csv")
+View(hashtag_joebiden)
+```
+
+## Sentiment Lexicons
+
+I will be using the sentiment lexicons bing and afinn for this project.
+```{r}
+get_sentiments("bing")
+
+```
+
+Bing gives a tibble that has a column of words and another column assigning the words a negative or positive sentiment. Some of the negative words are "hypocritical," "accuse," and "god-awful." Some examples of the positive words are "adore," "glow," and "ideal." 
+
+```{r}
+get_sentiments("afinn")
+```
+
+Afinn gives a tibble that has a column of words, a column of the words' assigned negative or positive sentiments, and a column of values that indicate how positive or negative the sentiments are. Negative words can have an integer value between -1 and -5, and positive words can have an integer value between 1 and 5. An example of a -1 negative word is "absentee", an example of a -3 negative word is "abhorrent," and anexample of a -5 negative word is "bitch." An example of a 1 positive word, "aboard," an example of a 3 positive word is "admire," and an example of a 5 positive word is "breathtaking." 
+
+#### Clean the main tibbles of Trump and Biden tweets
+
+```{r}
+# Selects the columns of interest
+hashtag_donaldtrump <- hashtag_donaldtrump %>%
+  select(created_at, tweet, likes, retweet_count, user_name, user_screen_name, user_description, user_followers_count, city, country, state_code) %>%
+  # Remove tweets from users outside the US
+  filter(country == "United States") 
+
+# Removes the whitespace and special characters from the tweets and puts them in a column of lists
+trump_main <- hashtag_donaldtrump %>%
+  mutate(
+    trump_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    # Creates identification for each individual tweet to show which words are part of the same tweet and better contextualize the sentiments
+    tweet_id = row_number()
+  ) %>% 
+  # Unlists the words from the tweets and gives each word its own cell
+  unnest(trump_words) 
+
+# Stores the bing sentiment tibble
+bing_sent <- get_sentiments("bing") 
+
+# Joins the Trump tweet tibble with the bing sentiment tibble
+trump_main <- trump_main %>%
+  inner_join(bing_sent, by = c("trump_words" = "word")) 
+```
+
+The Trump tweets tibble includes the date of the tweets' creation, number of likes, number of retweets, user, and location of the tweets, filtered such that it only includes tweets from users in the United States. I also tidied the data to include a colum  of the words from each tweet and a column of a number to identify the tweet that the words belong to. When joined with the bing lexicon, the join removes any word that bing doesn't recognize, including any words with a neutral sentiment (e.g. "the," "and," "a," etc.), misspellings, or any other words that aren't included in the lexicon. There is also a column with the sentiments of each word. 
+
+# Bing data 
+
+```{r}
+biden_main <- hashtag_joebiden %>%
+  mutate(
+    # Removes whitespace and punctuation
+    biden_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    # Adds a tweet id so I can know which words are associated with each tweet
+    tweet_id = row_number()
+  ) %>% 
+  # Takes them out of the list
+  unnest(biden_words) 
+
+biden_main <- biden_main %>%
+  inner_join(bing_sent, by = c("biden_words" = "word")) 
+```
+
+The Biden tibble follows the exact same process and has the same variables, but with tweets that are about Biden instead of Trump. 
+
+***
+
+#### Count the sentiment words of the Trump and Biden tibbles
+
+I counted the sentiment words to see overall which sentiment is more prevalent in the datasets and how big the difference is. 
+```{r}
+# Counts the number of sentiment words
+trump_main %>% 
+  count(sentiment)
+
+# Visualization of the sentiments
+ggplot(trump_main, aes(x = sentiment)) +
+  geom_bar() +
+  ggtitle("Number of Positive and Negative Words in Trump Tweets") +
+  labs(x = "Sentiment", y = "Number of Words")
+```
+
+There are 2,469 more negative words than positive words in the Trump tibble. Overall, more negative words than positive words are used when discussing Trump on Twitter. 
+
+```{r}
+#counts the sentiments of each tweet
+trump_main %>%
+  group_by(tweet_id) %>% 
+  count(sentiment) %>% 
+  ggplot(aes(x = sentiment)) +
+  geom_histogram(stat = "count") +
+  ggtitle("Number of Positive and Negative Trump Tweets") +
+  labs(x = "Sentiment", y = "Number of Tweets")
+```
+
+I also counted the sentiments of each tweet to count the overall sentiments of each tweet and compare the number of negative and positive tweets. This also shows that there are more negative tweets about Trump than positive tweets. 
+
+I repeated the same process with the Biden tibble. 
+
+```{r}
+# Counts the number of sentiment words
+biden_main %>% 
+  count(sentiment)
+
+# Visualization of the sentiments
+ggplot(biden_main, aes(x = sentiment)) +
+  geom_bar() +
+  ggtitle("Number of Positive and Negative Words in Biden Tweets") +
+  labs(x = "Sentiment", y = "Number of Words")
+
+#counts the sentiments of each tweet
+biden_main %>%
+  group_by(tweet_id) %>% 
+  count(sentiment) %>% 
+  ggplot(aes(x = sentiment)) +
+  geom_histogram(stat = "count") + 
+  ggtitle("Number of Positive and Negative Biden Tweets") +
+  labs(x = "Sentiment", y = "Number of Tweets")
+```
+
+The results of the Biden count were different from the Trump count. There were 1,178 more positive words about Biden than negative words. The difference between the positive and negative Biden words was smaller than the difference in sentiment words from then Trump tibble, indicating that the Biden sentiments are more evenly matched than the Trump tweets. There are also more tweets with an overall positive sentiment than negative in the Biden tibble. 
+
+***
+
+### How did the percentage of positive and negative words each day change over the course of the election month?
+
+I found the percentage of positive and negative words in order to gain a sense of the tone and frequency of the tweets. The percentage of positive and negative words in each tweet shows the frequency of positve and negative words in tweets when graphed over time. 
+
+I wanted to find the percentage of negative and positve words in each tweet over the course of election month. However, because that's a lot of data, the graphs were incredibly messy and did not provide helpful information. 
+```{r}
+trump_num_words <- hashtag_donaldtrump %>%
+  mutate(
+    trump_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(trump_words) %>% 
+  count(tweet_id)
+
+trump_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(created_at, tweet_id) %>% 
+  count(sentiment) %>% 
+  inner_join(trump_num_words, by = "tweet_id", "tweet_id") %>% 
+  mutate(perc = ((n.x / n.y) * 100)) %>% 
+  group_by(date(created_at), sentiment) %>% 
+  summarise(perc = mean(perc)) %>% 
+  ggplot(aes(x = `date(created_at)`, y = perc), color = sentiment) +
+  geom_line() +
+  facet_wrap(~sentiment) +
+  ggtitle("Percentage of Trump Sentiment Words Per Tweet Over Time") +
+  labs(x = "Date", y = "Percentage")
+  
+```
+
+I repeated the same process with the Biden tibble. 
+
+```{r}
+biden_num_words <- hashtag_joebiden %>%
+  mutate(
+    biden_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(biden_words) %>% 
+  count(tweet_id)
+
+biden_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(created_at, tweet_id) %>% 
+  count(sentiment) %>% 
+  inner_join(biden_num_words, by = "tweet_id", "tweet_id") %>% 
+  mutate(perc = ((n.x / n.y) * 100)) %>% 
+  group_by(date(created_at), sentiment) %>% 
+  summarise(perc = mean(perc)) %>% 
+  ggplot(aes(x = `date(created_at)`, y = perc), color = sentiment) +
+  geom_line() +
+  facet_wrap(~sentiment) +
+  ggtitle("Percentage of Biden Sentiment Words Per Tweet Over Time") +
+  labs(x = "Date", y = "Percentage")
+```
+
+Calculating the percentage of words with a sentiment for each tweet and aggregating the tweets for every day, the results show a relatively steady percentage of negative sentiment words used in tweets about Trump, with the positive words increasing throughout election week. Positive tweets about Biden followed a similar trend, although the peak of positive Biden tweets was smaller than the peak of positive Trump tweets, but the negative tweets about Biden followed a different trend as they overall decreased throughout election week.The percentage of sentiment words in tweets over time showed how Twitter users tweeted about each candidate up and through the 2020 election. Both Trump and Biden received an increase in positive tweets on and after Election Day, showing that when faced with the actual election, supporters, Trump supporters in particular, focused on rallying around their own candidate instead of criticizing the other candidate. Although to focus on tweeting positive comments about their preferred candidate is still a part of the “team spirit” element associated with affective polarization, I was surprised to find that the reaction for supporters of both candidates was to post tweets that were more positive in tone than attack the other side more aggressively.
+
+### What was the ratio of negative to positive words in tweets?
+
+I counted the number of tweets that have different negative to positive word ratios for both candidates. The ratio shows how many tweets have definitively negative or positive sentiments for each candidate. 
+
+```{r}
+# Calculate ratio of negative to positive words per tweet
+# The 0 column includes tweets that only use negative words (no positive words found)
+
+trump_main %>% 
+  group_by(tweet_id) %>% 
+  count(sentiment) %>% 
+  pivot_wider(names_from = sentiment, values_from = n) %>% 
+  mutate(ratio = negative / positive) %>% 
+  mutate(negative = replace_na(negative, 0)) %>% 
+  mutate(positive = replace_na(positive, 0)) %>% 
+  mutate(ratio = replace_na(ratio, 0)) %>% 
+  ggplot(aes(x = ratio), stat_bin(drop = FALSE), na.rm = FALSE) +
+  geom_histogram() +
+  ggtitle("Number of Trump Tweets with Different Negative/Positive Sentiment Ratios") +
+  labs(x = "Negative/Positve Sentiment Ratios", y = "Number of Tweets")
+```
+
+Within the Trump dataset, by far the biggest bar was the 0 bar where there were only negative words and no positive words in those tweets. 
+
+```{r}
+# Find the ratio of negative to positive words and then graph the distribution
+biden_main %>% 
+  group_by(tweet_id) %>% 
+  count(sentiment) %>% 
+  pivot_wider(names_from = sentiment, values_from = n) %>% 
+  mutate(ratio = negative / positive) %>% 
+  mutate(negative = replace_na(negative, 0)) %>% 
+  mutate(positive = replace_na(positive, 0)) %>% 
+  mutate(ratio = replace_na(ratio, 0)) %>% 
+  ggplot(aes(x = ratio), stat_bin(drop = FALSE), na.rm = FALSE) +
+  geom_histogram() +
+  ggtitle("Number of Biden Tweets with Different Negative/Positive Sentiment Ratios") +
+  labs(x = "Negative/Positve Sentiment Ratios", y = "Number of Tweets")
+```
+
+The Biden dataset showed the same pattern where there were more tweets with only negative words and no positive words. The pattern between both datasets suggests that more Twitter users who tweet about the candidates use negative words, which contrasts the trends from the percentage graphs where there were increases in the tweets, especially during Election Week. However, the ratio bar graphs include all of the tweets counted and not graphed over time.
+
+***
+
+### How do Twitter users interact with tweets with positive or negative tweets through likes and retweets?
+
+Twitter user engagement with tweets of different sentiments indicates how much users approve of the content tweeted. I wanted to look at the number of likes and retweets both to see if tweets with more extreme sentiments elicit a potentially more emotionally-charged reaction and gain more engagement with the tweets. Additionally, tweets that receive more likes and retweets also tend to get more exposure because the likes and retweets boost tweets and expand their networks. 
+
+```{r}
+# Counts the number of positive or negative words for the tweets with the most retweets
+trump_main %>%
+  group_by(tweet_id) %>% 
+  count(retweet_count, sentiment) %>% 
+  # I arranged the tibble descending by retweets to see the tweets with the most retweets
+  arrange(desc(retweet_count)) 
+```
+
+I arranged the tibble to count the number of retweets and the number of sentiment words for each of the most retweeted tweets. 
+
+```{r}
+# Graph of the number of retweets with positive or negative words
+ggplot(trump_main, aes(x = sentiment, y = retweet_count)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Retweets For All Trump Words") +
+  labs(x = "Sentiment", y = "Number of Retweets")
+```
+
+The graph shows that there are more retweets of tweets about Trump with a negative sentiment than a positive sentiment. The more villifying tweets gain more attention, potentially increasing affective polarization among Biden supporters because it increases exposure to tweets that are more negative towards the other side and increases dislike of the other side. 
+
+```{r}
+# Graph of the number of retweets each tweet got with the color being the sentiment of the tweet  
+ggplot(trump_main, aes(x = tweet_id, y = retweet_count, color = sentiment)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Retweets Per Trump Tweet By Sentiment") +
+  labs(x = "Individual Tweet", y = "Number of Retweets")
+```
+This graph shows the number of retweets each tweet received by the sentiment of each tweet. 
+
+Repeat the process with the Biden dataset.
+```{r}
+# Counts the number of positive or negative words for the tweets with the most retweets
+biden_main %>%
+  group_by(tweet_id) %>% 
+  count(retweet_count, sentiment) %>% 
+  # I arranged the tibble descending by retweets to see the tweets with the most retweets
+  arrange(desc(retweet_count))
+```
+
+```{r}
+# Graph of the number of retweets with positive or negative words
+ggplot(biden_main, aes(x = sentiment, y = retweet_count)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Retweets For All Biden Words") +
+  labs(x = "Sentiment", y = "Number of Retweets")
+```
+
+The Biden dataset showed different results from the Trump dataset, with more positive tweets bout Biden receiving retweets than negative tweets.
+
+```{r}
+# Graph of the number of retweets each tweet got with the color being the sentiment of the tweet  
+ggplot(biden_main, aes(x = tweet_id, y = retweet_count, color = sentiment)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Retweets Per Biden Tweet By Sentiment") +
+  labs(x = "Individual Tweet", y = "Number of Retweets")
+```
+This bar graph showed fewer large spikes than the Trump dataset, but the biggest spike from a particular tweet having more retweets has a positive sentiment, whereas the majority of the Trump spikes were negative. The culmination of the more positive Biden tweets and more negative Biden tweets would indicate that more liberal Twitter users might have a greater sense of affective polarization with a greater sense of "team spirit" for Biden and hatred for Trump.
+
+
+I repeated the processes again with the number of likes and found similar patterns as the retweet counts, starting with the Trump dataset. 
+
+```{r}
+# Counts the number of positive or negative words for the tweets with the most likes
+trump_main %>% 
+  group_by(tweet_id) %>% 
+  count(likes, sentiment) %>% 
+  arrange(desc(likes))
+```
+
+```{r}
+# Graph of the number of likes of tweets with positive or negative words
+ggplot(trump_main, aes(x = sentiment, y = likes)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Nummber of Likes for All Trump Words") +
+  labs(x = "Sentiment", y = "Number of Likes")
+```
+Similar to the graph of Trump tweets and their number of retweets per sentiment, there were more likes for negative tweets about Trump than positive tweets, but the distribution is more even. 
+
+
+```{r}
+# Graph of the number of likes each tweet got with the color being the sentiment of the tweet
+ggplot(trump_main, aes(x = tweet_id, y = likes, color = sentiment)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Likes Per Trump Tweet By Sentiment") +
+  labs(x = "Individual Tweet", y = "Number of Likes")
+```
+The spikes where there are tweets with a lot of likes had more negative sentiments, but there were also some well-liked tweets with a positive sentiment. 
+
+I repeated the process again with the Biden dataset. 
+
+```{r}
+# Counts the number of positive or negative words for the tweets with the most likes
+biden_main %>% 
+  group_by(tweet_id) %>% 
+  count(likes, sentiment) %>% 
+  arrange(desc(likes))
+```
+
+```{r}
+# Graph of the number of likes of tweets with positive or negative words
+ggplot(biden_main, aes(x = sentiment, y = likes)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Likes for All Biden Words") +
+  labs(x = "Sentiment", y = "Number of Likes")
+```
+
+There were significantly more positive Biden tweets that received likes than negative tweets.
+
+```{r}
+# Graph of the number of likes each tweet got with the color being the sentiment of the tweet
+ggplot(biden_main, aes(x = tweet_id, y = likes, color = sentiment)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Likes Per Biden Tweet By Sentiment") +
+  labs(x = "Individual Tweet", y = "Number of Likes")
+```
+The majority of the most liked tweets had a positive sentiment, but there were a few more well-liked negative tweets about Biden than from the retweet graph. 
+
+Based on the proportions of negative an positive liked or retweeted tweets, it appears that Biden supporters both tweeted positive things abut Biden and negative things about Trump consistently (perhaps with more negative Trump tweets gaining traction). Trump supporters tended to tweet positive things about Trump. Although they also tweeted negative things about Biden, Trump supporters seemed to engage more with tweets that were rallying around Trump than speaking negatively of Biden. While supporters of both candidates interacted with both negative and positive tweets, if number of likes and retweets indicates how much exposure the tweets received, Biden supporters may experience more affective polarization than Trump supporters because they can use the anger they're exposed to as a way to be against Trump. If those negative Trump tweets also end up in the networks of Trump supporters, they might experience an increase in affective polarization because they're seeeing negative things about their own candidate, which might elicit an angry reaction that would increase negative feelings about Biden supporters. 
+
+
+***
+# Afinn Data
+
+### What is the typical extremity of the tweet sentiments?
+
+I used the Afinn sentiment lexicon, which gives an integer value from -5 to 5 of the negative or positive sentiment of each words. The sentiment value shows how loaded the sentiments are and gives more information about the tweets' tone. 
+
+```{r}
+### afinn data
+
+trump_main <- hashtag_donaldtrump %>%
+  mutate(
+    trump_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(trump_words)
+
+afinn_sent <- get_sentiments("afinn")
+
+trump_main <- trump_main %>% 
+  inner_join(afinn_sent, by = c("trump_words" = "word"))
+```
+
+I counted the number of words with each sentiment value. The biggest integer level for both positive and negative sentiments was integer level 2, so primarily the sentiment words were a bit negative or positive, but not very extreme. 
+```{r}
+# Counts the number of words with each sentiment value
+trump_main %>% 
+  count(value)
+```
+
+```{r}
+# Graph the number of words with each sentiment value
+trump_main %>% 
+  count(value) %>% 
+  ggplot(aes(x = value, y = n)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Words With Each Sentiment Value") +
+  labs(x = "Sentiment Value", y = "Number of Words")
+```
+
+The grah visualizes the distribution of words with each sentiment value. For both positive and negative words, the value peaks at 2 and decreases as the words get more extreme.
+
+```{r}
+# Graph the number of words with each value per tweet
+trump_main %>% 
+  group_by(tweet_id) %>% 
+  count(trump_words, value)
+```
+
+I counted the number of words per tweet with a positive or negative sentiment, and this table also gives examples of words of any sentiment value.
+
+```{r}
+# Finding the descriptive statistics of the sentiment values for all the words
+trump_main %>% 
+  summarise(mean = mean(value), median = median(value), sd = sd(value), n = n())
+```
+
+On average, the sentiment of the words used were barely negative and would be rounded to zero. The sentiment value of all tweets about Trump and Biden leveled out to about a net neutral, but the median value was -1, indicating a more definitive negative shift in all words tweeted about Donald Trump. 
+
+I repeated the process again with Biden.  
+```{r}
+biden_main <- hashtag_joebiden %>%
+  mutate(
+    biden_words = str_replace_all(tweet, "[^[A-Za-z,]]", " ") %>%
+      str_squish(.) %>%
+      str_replace_all(.,",",",") %>%
+      str_split(boundary("word")), 
+    tweet_id = row_number()
+  ) %>% 
+  unnest(biden_words)
+
+afinn_sent <- get_sentiments("afinn")
+
+biden_main <- biden_main %>% 
+  inner_join(afinn_sent, by = c("biden_words" = "word")) 
+```
+
+```{r}
+# Counts the number of words with each sentiment value
+biden_main %>% 
+  count(value)
+```
+Once again, the positive and negative sentiment words were mostly at a value of 2 or -2, showing that were were a bit positive or negative, and decreasing as the words got more extreme in both directions. 
+
+```{r}
+# Graph the number of words with each sentiment value
+biden_main %>% 
+  count(value) %>% 
+  ggplot(aes(x = value, y = n)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Words With Each Sentiment Value") +
+  labs(x = "Sentiment Value", y = "Number of Words")
+```
+
+The graph provides a visualization of the count distribution. There were more somewhat positive words tweeted about Biden than negative words, but the pattern is the same on both ends. 
+
+```{r}
+# Graph the number of words with each value per tweet
+biden_main %>% 
+  group_by(tweet_id) %>% 
+  count(biden_words, value)
+```
+
+The table gives the number of positive and negative words per tweet, along with the sentiment values, and shows what the words used are. 
+
+```{r}
+# Finding the descriptive statistics of the sentiment values for all the words
+biden_main %>% 
+  summarise(mean = mean(value), median = median(value), sd = sd(value), n = n())
+```
+
+For tweets about Biden, the mean was also close to zero, but more positive. The median also had an absolute value of 1, but for the tweets about Biden they shifted positive rather than negative. 
+
+***
+### What is the average sentiment of tweets over time?
+
+I graphed the average sentiment value of the tweets created each day in the data's timeframe because I wanted to see how the sentiment value of tweets overall changed with closer proximity to the election. For both candidates, once Election Day hit they received a spike in average sentiment value going more positive than before. However, tweets about Trump were on average more negative and then did not stay as positive after Election Day as tweets about Biden.
+
+Trump sentiment value over time
+```{r}
+# Graphs the average sentiment of each tweet over time
+trump_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(date(created_at)) %>% 
+  summarise(value = mean(value)) %>%
+  ggplot(aes(x = `date(created_at)`, y = value)) +
+  geom_line() +
+  ggtitle("Average Sentiment Value of Trump Tweets Over Time") +
+  labs(x = "Date", "Sentiment Value")
+```
+
+Biden sentiment value over time
+```{r}
+# Graph average sentiment value over time
+biden_main %>% 
+  mutate(created_at = ymd_hms(created_at)) %>% 
+  group_by(date(created_at)) %>% 
+  summarise(value = mean(value)) %>%
+  ggplot(aes(x = `date(created_at)`, y = value)) +
+  geom_line() +
+  ggtitle("Average Sentiment Value of Biden Tweets Over Time") +
+  labs(x = "Date", "Sentiment Value")
+```
+
+For both candidates, tweets written about them increased in average sentiment value, or got more positive, over time. Tweets about Trump began at a lower average value than tweets about Biden, indicating that there was a greater negative sentiment value about Trump. When both candidates peaked on Election Day, Biden’s peak was higher than Trump’s. Trump also only net more positive sentiment tweets once until Election day, while Biden did twice before. Overall, the average sentiment value for both candidates each day was relatively neutral, with the absolute value of the average sentiment values being less than 0.5.
+
+***
+
+### Is there a relationship between the average sentiment value of tweets and the number of likes or retweets they receive?
+
+The regression summaries show the relationships between the average sentiment value of tweets and either the number of likes or number of retweets received, controlling for the users’ follower counts or number of likes or retweets depending on which was the dependent variable in the regression formula. I controlled for follower counts because it affects each users’ inherent network size and the expected number of people to view a tweet. I also controlled for likes and retweets because both increase the engagement of a tweet, so a tweet with more likes will receive more views, as will a tweet with more retweets. Increased engagement could lead to increased interaction with tweets.
+
+Trump regressions
+```{r}
+summary(
+  trump_main %>% 
+    group_by(tweet_id) %>% 
+    mutate(value_group = mean(value)) %>% 
+    ungroup() %>% 
+    distinct(tweet_id, .keep_all = T) %>% 
+    lm(formula = likes ~ value_group + user_followers_count + retweet_count))
+
+```
+
+```{r}
+summary(trump_main %>% 
+  group_by(tweet_id) %>% 
+  mutate(value_group = mean(value)) %>% 
+    ungroup() %>% 
+    distinct(tweet_id, .keep_all = T) %>% 
+  lm(formula = retweet_count ~ value_group + user_followers_count + likes))
+```
+
+
+Biden regressions 
+```{r}
+summary(
+  biden_main %>% 
+    group_by(tweet_id) %>% 
+    mutate(value_group = mean(value)) %>% 
+    ungroup() %>% 
+    distinct(tweet_id, .keep_all = T) %>% 
+    lm(formula = likes ~ value_group + as.numeric(user_followers_count) + retweet_count))
+```
+
+
+```{r}
+summary(
+  biden_main %>% 
+    group_by(tweet_id) %>% 
+    mutate(value_group = mean(value)) %>% 
+    ungroup() %>% 
+    distinct(tweet_id, .keep_all = T) %>% 
+    lm(formula = retweet_count ~ value_group + as.numeric(user_followers_count) + likes))
+```
+
+Three out of four of the regressions do not show a relationship between the average sentiment value of tweets and the number of likes or retweets received, showing that sentiment value does not affect the number of users interacting with tweets, except in the case of Biden tweets receiving more likes with more positivity, perhaps implying that Biden supporters will engage more with positivity towards their candidate than negativity towards Trump. The purpose of performing the regressions was to observe whether a particular tweet sentiment elicited more likes or retweets, suggesting that more users would be exposed to that particular sentiment and allowing for a prediction of the networks of Trump and Biden supporters. The Biden sentiment and likes relationship suggests that Biden supporters share networks with other Biden supporters because likes on tweets about him increase with increased positive sentiment. This would suggest that Twitter networks, at least among liberal users, are homogenized and civil, contributing to affective polarization because of selective exposure, but without heightened emotions of anger or disgust with the other side. 
+ 
+
+My EDA found that the number of positive tweets about either candidate was greater than the number of negative tweets and grew with the election. However, the tone of the negative tweets was stronger than the tone of the positive tweets, potentially leading to a heightened emotional reaction from Twitter users exposed to those tweets. The culmination of these findings would suggest that messaging on Twitter would lead to an increase in affective polarization among Twitter users because of the amount of support for each candidate coupled with the emotional charge of negative comments about the opposite candidate provided that the networks are homogenized. The regression of average sentiment value of Biden tweets and number of likes does suggest homogeneous networks because the number of likes increases with average sentiment value, in turn affirming the prediction that Twitter sentiments may lead to an increase in affective polarization, but the prediction is weak because the other three regressions do not show any relationship.
