@@ -1,0 +1,71 @@
+﻿Datasets: [US Election 2020 Tweets] (https://www.kaggle.com/manchunhui/us-election-2020-tweets)
+
+trump_main includes all tweets written about Donald Trump (tweets that include his name) from 10/15/2020-11/8/2020
+
+biden_main includes all tweets written about Joe Biden (tweets that include his name) from 10/15/2020-11/8/2020
+
+bing is a sentiment lexicon used for text analysis that includes one column of words and another column of their sentiment, either positive or negative
+
+afinn is a sentiment lexicon used for text analysis that includes one column of words, another column of whether they have a positive or negative sentiment, and one column where they're assigned a value noting the sentiment strength of each word
+
+Variables always in both trump_main and biden_main: 
+
+
+created_at: The date and time each tweet was posted
+
+
+tweet: The transcript of each tweet
+
+
+likes: The number of likes each tweet received 
+
+
+retweet_count: The number of retweets each tweet received
+
+
+user_name: The user name of every person who posted a tweet (The name that appears as the author of a tweet, not the username with the @)
+
+
+user_screen_name: The screen name of every person who posted a tweet that utilizes the @
+
+
+user_description: The biography description of each user
+
+
+user_followers_count: The number of followers each user has
+
+
+city: The city each tweet was written in
+
+
+country: The country each tweet was written in, filtered such that all tweets came from the United States
+
+
+state_code: The abbreviation of the state each tweet was written in
+
+
+tweet_id: A number identifying which words in the trump_words and biden_words columns belong together; indicate the tweet each word belongs to
+
+
+Variables that are in the trump_main or biden_main tibbles when they’re joined with both bing and afinn:
+
+
+trump_words: Splits the tweets into each individual word, removing whitespace and punctuation. When trump_main is joined with bing and afinn, both sentiment lexicons remove any neutral or otherwise unrecognized words, so trump_words only include words that have a positive or negative sentiment
+
+
+biden_words: splits the tweets into each individual word, removing whitespace and punctuation. When biden_main is joined with bing and afinn, both sentiment lexicons remove any neutral or otherwise unrecognized words, so trump_words only include words that have a positive or negative sentiment
+
+
+Specific to bing:
+
+
+Sentiment: Assigns each word either a positive or negative sentiment according to the bing dictionary; removes any neutral words from trump_words and biden_words when joined with trump_main and biden_main
+
+
+Specific to afinn: 
+
+
+sentiment: Acts the same as the sentiment variable from the bing lexicon but with the afinn dictionary
+
+
+Value: Assigns each sentiment word (trump_words or biden_words) an integer value from -5 to 5. Negative numbers are associated with a negative word, with -5 being the most negative. Positive numbers are associated with a positive word, with 5 being the most positive.
